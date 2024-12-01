@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Check if user is authenticated
+    function isAuth() {
+      return request.auth != null;
+    }
+    
+    // Check if user owns the document
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Allow read/write access to user's own data
+    match /users/{userId} {
+      allow read, write: if isAuth() && isOwner(userId);
+      
+      match /sessions/{sessionId} {
+        allow read, write: if isAuth() && isOwner(userId);
+      }
+      
+      match /preferences/{prefId} {
+        allow read, write: if isAuth() && isOwner(userId);
+      }
+    }
+
+    // Public profiles with limited access
+    match /profiles/{userId} {
+      allow read: if true;
+      allow write: if isAuth() && isOwner(userId);
+    }
+
+    // Sessions with participant access
+    match /sessions/{sessionId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update, delete: if isAuth() && (
+        resource.data.hostId == request.auth.uid ||
+        resource.data.participants[request.auth.uid] == true
+      );
+    }
+
+    // Allow authenticated users to read/write their own notifications
+    match /notifications/{notificationId} {
+      allow read, write: if isAuth() && resource.data.userId == request.auth.uid;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
